@@ -6,6 +6,7 @@ const port =3001;
 const host = 'localhost';
 const mongoose = require('mongoose');
 const router = require('./router');
+const empRouter = require('./Emp/empRouter')
 
 app.use(cors());
 app.use(express.json());
@@ -28,4 +29,6 @@ const server = app.listen(3001, '127.0.0.1', () => {
     console.log(`Node server is listening to ${server.address().port}`)
 });
 
+app.use(express.static('public/uploads'));
 app.use('/api', router);
+app.use('/api/Emp', empRouter);

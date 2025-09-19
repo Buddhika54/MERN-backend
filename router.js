@@ -11,7 +11,7 @@ router.post('/adlogin', controller.adminLogin)
 router.get('/verify', verifyUser, controller.verify);
 router.post('/add', verifyUser, controller.addDepartment)
 router.get('/department', verifyUser, controller.getDepartment)
-router.get('/:id',  verifyUser, controller.showDepartment)
+//router.get('/:id',  verifyUser, controller.showDepartment)
 router.put('/:id',  verifyUser, controller.updateDepartment)
 router.delete('/:id',  verifyUser, controller.deleteDepartment)
 

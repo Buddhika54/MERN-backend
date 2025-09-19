@@ -6,6 +6,8 @@ const bcrypt = require('bcrypt');
 const jwt = require ('jsonwebtoken');
 const multer = require('multer');
 const path = require('path');
+const { error } = require('console');
+const Salary = require('./model/Salary');
 
 
 
@@ -83,7 +85,7 @@ const getDepartment = async (req, res) =>{
     }
 }
 
-const showDepartment = async (req, res) => {
+/*const showDepartment = async (req, res) => {
     try {
         const {id} = req.params;
         const department = await Department.findById({_id: id})
@@ -92,7 +94,7 @@ const showDepartment = async (req, res) => {
         console.log(error.message)
         return res.status(500).json({success: false, error: "get show department server error"})
     }
-}
+}*/
 
 const updateDepartment = async (req, res) => {
     try{
@@ -155,12 +157,12 @@ const addEmployee = async (req, res) => {
             return res.status(400).json({success: false, error: "User already registerd in employee"})
         }
 
-        const hashPassword = await bcrypt.hash(password, 10)
+        //const hashPassword = await bcrypt.hash(password, 10)
 
         const newUser = new Admin({
             name,
             email,
-            password: hashPassword,
+            password,
             role,
             profileImage: req.file ? req.file.filename : ""
         })
@@ -198,15 +200,120 @@ const getEmployee = async (req, res) =>{
     }
 }
 
+const getEmployees = async (req, res) =>{
+    const {id} = req.params;
+    try {
+
+        const employee = await Employee.findById({_id: id}).populate('userId').populate('department')
+        return res.status(200).json({success: true, employee})
+    } catch (error) {
+        return res.status(500).json({success: false, error: "get employee server error"})
+    }
+}
+
+const updateEmployee = async (req, res) =>{
+    try {
+        const{id} = req.params;
+        const{
+            name,
+            gender,
+            martalStatus,
+            designation,
+            department,
+            salary,
+            role,
+
+        }= req.body;
+
+        const employee = await Employee.findById({_id: id})
+        if(!employee){
+            return res.status(404).json({success: false, error: "employee not found"})
+        }
+        const user = await Admin.findById({_id: employee.userId})
+
+        if(!user){
+            return res.status(404).json({success: false, error: "user not found"})
+        }
+
+        const updateUser =  await Admin.findByIdAndUpdate({_id: employee.userId}, {name})
+        const updateEmployee = await Employee.findByIdAndUpdate({_id: id}, {
+            gender,
+            martalStatus,
+            designation,
+            department,
+            salary,
+            role
+        })
+
+        if(!updateEmployee || !updateUser){
+             return res.status(404).json({success: false, error: "document not found"})
+        }
+
+    } catch (error) {
+        return res.status(500).json({success: false, error: "edit employee server error"})
+    }
+
+     return res.status(200).json({success: true, message: "employee uptated"})
+}
+
+const fetchEmployeeByDepId = async (req, res) => {
+    const {id} = req.params;
+    try {
+        const employees = await Employee.find({department: id})
+        return res.status(200).json({success: true, employees})
+    } catch (error) {
+        return res.status(500).json({success: false, error: "get employee by depId server error"})
+    }
+}
+
+const addSalary = async (req, res) => {
+    try{
+        const {employeeId, basicSalary, allowances, deductions, payDate} = req.body
+
+        const totalSalary = parseInt(basicSalary) + parseInt(allowances) - parseInt(deductions)
+
+        const newSalary = new Salary({
+            employeeId,
+            basicSalary,
+            allowances,
+            deductions,
+            netSalary: totalSalary,
+            payDate
+        })
+
+        await newSalary.save()
+
+        return res.status(200).json({success: true})
+    }catch(error){
+        console.log(error)
+        return res.status(500).json({success: false, error: "Salary add server error"})
+    }
+}
+
+const getSalary = async (req,res) => {
+    try {
+        const {id} = req.params;
+        const salary = await Salary.find({employeeId: id}).populate('employeeId', 'employeeId')
+        return res.status(200).json({success: true, salary})
+
+    } catch (error) {
+        return res.status(500).json({success: false, error: "Salary get server error"})
+    }
+}
 
 exports.upload = upload.single('image');
 exports.addEmployee = addEmployee;
 exports.deleteDepartment = deleteDepartment;
 exports.updateDepartment = updateDepartment;
-exports.showDepartment = showDepartment;
+//exports.showDepartment = showDepartment;
 exports.getDepartment = getDepartment;
 exports.addDepartment = addDepartment;
 exports.adminRegister = adminRegister;
 exports.adminLogin = adminLogin;
 exports.verify = verify;
 exports.getEmployee = getEmployee;
+exports.getEmployees = getEmployees;
+exports.updateEmployee = updateEmployee;
+exports.fetchEmployeeByDepId = fetchEmployeeByDepId;
+exports.addSalary = addSalary
+exports.getSalary = getSalary

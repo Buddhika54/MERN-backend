@@ -7,7 +7,7 @@ const orderSchema = new mongoose.Schema({
   },
   customerEmail: {
     type: String,
-    required: true,
+    required: false,
   },
   contactNumber: { type: String, required: true },
   product: {
@@ -18,11 +18,22 @@ const orderSchema = new mongoose.Schema({
     type: Number,
     required: true,
   },
+  items: {
+    type: Number,
+    min: 1,
+    default: 1,
+  },
   productSpecs: {
     type: String, // optional
   },
   deliveryInstructions: {
     type: String, // optional
+  },
+  price: {
+    type: Number, // total price in LKR for this order
+  },
+  auctionWinner: {
+    type: String, // winner bidder name from auction close
   },
   status: {
     type: String,

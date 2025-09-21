@@ -103,13 +103,18 @@ router.put("/:id/close", async (req, res) => {
 
     auction.status = "Closed";
 
-    // Connect with order: mark confirmed and optionally store winner info
-    const order = await Order.findById(auction.orderId);
-    if (order) {
-      order.status = "Confirmed";
-      order.auctionWinner = auction.highestBidder || null;
-      await order.save();
-    }
+    // Connect with order: mark confirmed and store winner info
+    // Use findByIdAndUpdate with validation disabled to avoid failing on legacy docs
+    await Order.findByIdAndUpdate(
+      auction.orderId,
+      {
+        $set: {
+          status: "Confirmed",
+          auctionWinner: auction.highestBidder || null,
+        },
+      },
+      { new: true, runValidators: false }
+    );
 
     await auction.save();
     res.status(200).json({ success: true, auction });

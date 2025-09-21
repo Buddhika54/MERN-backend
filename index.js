@@ -6,6 +6,7 @@ const cors = require("cors"); // <- import cors
 const pickupRoutes = require("./routes/pickupRoutes");
 
 const auctionRoutes = require("./routes/auctionRoutes"); 
+const invoiceRoutes = require("./routes/invoiceRoutes");
 
 
 const app = express();
@@ -28,6 +29,7 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/pickups", pickupRoutes);
 
 app.use("/api/auctions", auctionRoutes);
+app.use("/api/invoices", invoiceRoutes);
 
 // Default route
 app.get("/", (req, res) => res.send("Hello Server is Running .."));

@@ -8,6 +8,52 @@ const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const path = require("path");
 
+// Simple helper to draw a key/value table
+function drawKeyValueTable(doc, rows, {
+  x = 50,
+  y = doc.y,
+  col1Width = 160,
+  col2Width = 360,
+  rowHeight = 24,
+  header = null,
+} = {}) {
+  const tableWidth = col1Width + col2Width;
+
+  if (header) {
+    doc.fontSize(12).font("Helvetica-Bold").text(header, x, y);
+    y += rowHeight;
+  }
+
+  // Header row background and labels
+  doc.save();
+  doc.rect(x, y, col1Width, rowHeight).fill("#f0f0f0").stroke();
+  doc.fillColor("#000").font("Helvetica-Bold").text("Field", x + 8, y + 6, { width: col1Width - 16 });
+  doc.fillColor("#000");
+  doc.rect(x + col1Width, y, col2Width, rowHeight).fill("#f0f0f0").stroke();
+  doc.fillColor("#000").font("Helvetica-Bold").text("Value", x + col1Width + 8, y + 6, { width: col2Width - 16 });
+  doc.restore();
+
+  y += rowHeight;
+
+  // Rows
+  doc.font("Helvetica");
+  rows.forEach(([k, v]) => {
+    // Box for key
+    doc.rect(x, y, col1Width, rowHeight).stroke();
+    doc.text(String(k), x + 8, y + 6, { width: col1Width - 16 });
+
+    // Box for value (allow wrap)
+    doc.rect(x + col1Width, y, col2Width, rowHeight).stroke();
+    doc.text(String(v), x + col1Width + 8, y + 6, { width: col2Width - 16 });
+
+    y += rowHeight;
+  });
+
+  // Move document cursor below the table
+  doc.moveTo(x, y);
+  doc.y = y + 10;
+}
+
 // ----------------------- ORDERS CRUD -----------------------------
 
 // @desc    Create new order
@@ -17,25 +63,37 @@ router.post("/", async (req, res) => {
     const {
       customerName,
       customerEmail,
+      contactNumber,
       product,
       quantity,
+      items,
       productSpecs,
       deliveryInstructions,
+      price,
     } = req.body;
 
     const newOrder = new Order({
       customerName,
       customerEmail,
+      contactNumber,
       product,
       quantity,
+      items,
       productSpecs,
       deliveryInstructions,
+      price,
     });
 
     await newOrder.save();
     return res.status(201).json({ success: true, order: newOrder });
   } catch (error) {
     console.error(error.message);
+    // Return validation errors as 400 to avoid generic 500s for client-side fixable issues
+    if (error.name === "ValidationError") {
+      return res
+        .status(400)
+        .json({ success: false, error: error.message });
+    }
     return res
       .status(500)
       .json({ success: false, error: "Server error while creating order" });
@@ -104,9 +162,11 @@ router.put("/:id", async (req, res) => {
 
     // ✅ Generate invoice only if status changed to "Confirmed"
     if (req.body.status === "Confirmed" && prevStatus !== "Confirmed") {
-      const taxRate = 0.1;
-      const pricePerUnit = 50;
-      const totalAmount = order.quantity * pricePerUnit * (1 + taxRate);
+      // Compute totals based on the price stored with the order so the invoice matches the customer's order
+      const taxRate = 0.1; // 10% tax (adjust as needed)
+      const baseAmount = Number(order.price || 0);
+      const tax = baseAmount * taxRate;
+      const totalAmount = baseAmount + tax;
 
       const newInvoice = new Invoice({
         orderId: order._id,
@@ -117,7 +177,7 @@ router.put("/:id", async (req, res) => {
         productSpecs: order.productSpecs,
         deliveryInstructions: order.deliveryInstructions,
         status: order.status,
-        tax: order.quantity * pricePerUnit * taxRate,
+        tax,
         totalAmount,
       });
 
@@ -170,42 +230,60 @@ router.get("/:id/invoice", async (req, res) => {
       return res.status(400).json({ success: false, error: "Invalid Order ID" });
     }
 
-    const invoice = await Invoice.findOne({ orderId: id }).populate("orderId");
+    let invoice = await Invoice.findOne({ orderId: id }).populate("orderId");
+
+    // If invoice doesn't exist yet, attempt to create it on-demand from the order
     if (!invoice) {
-      return res.status(404).json({ success: false, error: "Invoice not found for this order" });
+      const order = await Order.findById(id);
+      if (!order) {
+        return res.status(404).json({ success: false, error: "Order not found" });
+      }
+
+      const taxRate = 0.1;
+      const baseAmount = Number(order.price || 0);
+      const tax = baseAmount * taxRate;
+      const totalAmount = baseAmount + tax;
+
+      invoice = new Invoice({
+        orderId: order._id,
+        customerName: order.customerName,
+        customerEmail: order.customerEmail,
+        product: order.product,
+        quantity: order.quantity,
+        productSpecs: order.productSpecs,
+        deliveryInstructions: order.deliveryInstructions,
+        status: order.status,
+        tax,
+        totalAmount,
+      });
+      await invoice.save();
     }
+
+    // Stream PDF directly to client
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename=Invoice_${invoice._id}.pdf`);
 
     const doc = new PDFDocument();
-    const filePath = path.join(__dirname, `../invoices/invoice_${invoice._id}.pdf`);
+    doc.pipe(res);
 
-    if (!fs.existsSync(path.join(__dirname, "../invoices"))) {
-      fs.mkdirSync(path.join(__dirname, "../invoices"));
-    }
+    doc.fontSize(18).font("Helvetica-Bold").text("Invoice", { align: "center" });
+    doc.moveDown(1.5);
 
-    doc.pipe(fs.createWriteStream(filePath));
+    drawKeyValueTable(doc, [
+      ["Customer", invoice.customerName],
+      ["Email", invoice.customerEmail],
+      ["Product", invoice.product],
+      ["Quantity", String(invoice.quantity)],
+      ["Specs", invoice.productSpecs || "-"],
+      ["Delivery", invoice.deliveryInstructions || "-"],
+      ["Status", invoice.status],
+      ["Base Amount", `LKR ${Math.max(0,(invoice.totalAmount||0)-(invoice.tax||0)).toLocaleString(undefined,{ maximumFractionDigits: 2 })}`],
+      ["Tax (10%)", `LKR ${invoice.tax.toLocaleString(undefined,{ maximumFractionDigits: 2 })}`],
+      ["Total", `LKR ${invoice.totalAmount.toLocaleString(undefined,{ maximumFractionDigits: 2 })}`],
+      ["Created At", invoice.createdAt.toDateString()],
+    ], { header: null });
 
-    doc.fontSize(18).text("Invoice", { align: "center" });
-    doc.moveDown();
-
-    doc.fontSize(12).text(`Customer: ${invoice.customerName}`);
-    doc.text(`Email: ${invoice.customerEmail}`);
-    doc.moveDown();
-
-    doc.text(`Product: ${invoice.product}`);
-    doc.text(`Quantity: ${invoice.quantity}`);
-    if (invoice.productSpecs) doc.text(`Specs: ${invoice.productSpecs}`);
-    if (invoice.deliveryInstructions) doc.text(`Delivery: ${invoice.deliveryInstructions}`);
-    doc.moveDown();
-
-    doc.text(`Status: ${invoice.status}`);
-    doc.text(`Tax: $${invoice.tax.toFixed(2)}`);
-    doc.text(`Total: $${invoice.totalAmount.toFixed(2)}`);
-    doc.text(`Created At: ${invoice.createdAt.toDateString()}`);
     doc.end();
-
-    doc.on("finish", () => {
-      res.download(filePath, `Invoice_${invoice._id}.pdf`);
-    });
 
   } catch (error) {
     console.error(error.message);
@@ -232,34 +310,33 @@ router.get("/:id/details-pdf", async (req, res) => {
       return res.status(404).json({ success: false, error: "Order not found" });
     }
 
-    const doc = new PDFDocument();
-    const filePath = path.join(__dirname, `../invoices/order_${order._id}_details.pdf`);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename=Order_${order._id}_Details.pdf`);
 
-    if (!fs.existsSync(path.join(__dirname, "../invoices"))) {
-      fs.mkdirSync(path.join(__dirname, "../invoices"));
+    const doc = new PDFDocument();
+    doc.pipe(res);
+
+    doc.fontSize(18).font("Helvetica-Bold").text("Order Details", { align: "center" });
+    doc.moveDown(1.5);
+
+    const rows = [
+      ["Customer", order.customerName],
+      ["Email", order.customerEmail],
+      ["Contact", order.contactNumber || "-"],
+      ["Product", order.product],
+      ["Quantity", String(order.quantity)],
+      ["Specs", order.productSpecs || "-"],
+      ["Delivery", order.deliveryInstructions || "-"],
+      ["Status", order.status],
+      ["Created At", order.createdAt.toDateString()],
+    ];
+    if (typeof order.price === 'number') {
+      rows.splice(6, 0, ["Price", `LKR ${order.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}`]);
     }
 
-    doc.pipe(fs.createWriteStream(filePath));
+    drawKeyValueTable(doc, rows, { header: null });
 
-    doc.fontSize(18).text("Order Details", { align: "center" });
-    doc.moveDown();
-
-    doc.fontSize(12).text(`Customer: ${order.customerName}`);
-    doc.text(`Email: ${order.customerEmail}`);
-    doc.text(`Contact: ${order.contactNumber}`);
-    doc.moveDown();
-
-    doc.text(`Product: ${order.product}`);
-    doc.text(`Quantity: ${order.quantity}`);
-    if (order.productSpecs) doc.text(`Specs: ${order.productSpecs}`);
-    if (order.deliveryInstructions) doc.text(`Delivery: ${order.deliveryInstructions}`);
-    doc.text(`Status: ${order.status}`);
-    doc.text(`Created At: ${order.createdAt.toDateString()}`);
     doc.end();
-
-    doc.on("finish", () => {
-      res.download(filePath, `Order_${order._id}_Details.pdf`);
-    });
 
   } catch (error) {
     console.error(error.message);

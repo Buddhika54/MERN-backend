@@ -124,4 +124,31 @@ router.put("/:id/close", async (req, res) => {
   }
 });
 
+// Delete auction (only if closed)
+router.delete("/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, error: "Invalid Auction ID" });
+    }
+
+    const auction = await Auction.findById(id);
+    if (!auction) {
+      return res.status(404).json({ success: false, error: "Auction not found" });
+    }
+
+    if (auction.status !== "Closed") {
+      return res.status(400).json({ success: false, error: "Only closed auctions can be deleted" });
+    }
+
+    await Auction.findByIdAndDelete(id);
+    return res.status(200).json({ success: true, message: "Auction deleted" });
+
+  } catch (err) {
+    console.error(err.message);
+    return res.status(500).json({ success: false, error: "Server error while deleting auction" });
+  }
+});
+
 module.exports = router;

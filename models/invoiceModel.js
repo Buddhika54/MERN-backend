@@ -7,7 +7,7 @@ const invoiceSchema = new mongoose.Schema({
     required: true,
   },
   customerName: { type: String, required: true },
-  customerEmail: { type: String, required: true },
+  customerEmail: { type: String, required: false },
   product: { type: String, required: true },
   quantity: { type: Number, required: true },
   productSpecs: { type: String },

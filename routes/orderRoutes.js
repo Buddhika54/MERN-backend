@@ -72,6 +72,17 @@ router.post("/", async (req, res) => {
       price,
     } = req.body;
 
+    // Basic email validation (required on create)
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!customerEmail || !emailRegex.test(String(customerEmail))) {
+      return res.status(400).json({ success: false, error: "A valid email is required" });
+    }
+
+    // Delivery instructions required (non-empty)
+    if (!deliveryInstructions || !String(deliveryInstructions).trim()) {
+      return res.status(400).json({ success: false, error: "Delivery instructions are required" });
+    }
+
     const newOrder = new Order({
       customerName,
       customerEmail,
@@ -155,6 +166,21 @@ router.put("/:id", async (req, res) => {
 
     const prevStatus = order.status;
 
+    // Validate email if provided
+    if (req.body.customerEmail !== undefined) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(String(req.body.customerEmail))) {
+        return res.status(400).json({ success: false, error: "Invalid email format" });
+      }
+    }
+
+    // Validate deliveryInstructions if provided
+    if (req.body.deliveryInstructions !== undefined) {
+      if (!String(req.body.deliveryInstructions).trim()) {
+        return res.status(400).json({ success: false, error: "Delivery instructions cannot be empty" });
+      }
+    }
+
     Object.keys(req.body).forEach((key) => {
       order[key] = req.body[key];
     });
@@ -187,6 +213,11 @@ router.put("/:id", async (req, res) => {
     return res.status(200).json({ success: true, order });
   } catch (error) {
     console.error(error.message);
+    if (error.name === "ValidationError") {
+      return res
+        .status(400)
+        .json({ success: false, error: error.message });
+    }
     return res
       .status(500)
       .json({ success: false, error: "Server error while updating order" });

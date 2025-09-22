@@ -7,7 +7,7 @@ const orderSchema = new mongoose.Schema({
   },
   customerEmail: {
     type: String,
-    required: false,
+    required: true,
   },
   contactNumber: { type: String, required: true },
   product: {
@@ -27,7 +27,10 @@ const orderSchema = new mongoose.Schema({
     type: String, // optional
   },
   deliveryInstructions: {
-    type: String, // optional
+    type: String,
+    required: true,
+    trim: true,
+    minlength: 1,
   },
   price: {
     type: Number, // total price in LKR for this order

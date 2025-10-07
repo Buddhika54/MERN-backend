@@ -37,10 +37,6 @@ const warehouseSchema = new mongoose.Schema({
     required: true,
     default: 0
   },
-  usedCapacity: {
-    type: Number,
-    default: 0
-  },
   manager: {
     type: String,
     default: ''
@@ -61,15 +57,15 @@ const warehouseSchema = new mongoose.Schema({
     type: String,
     enum: ['active', 'inactive', 'maintenance'],
     default: 'active'
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now
   }
-}, {
-  timestamps: true,
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
-});
-
-warehouseSchema.virtual('remainingCapacity').get(function() {
-  return Math.max(0, this.capacity - this.usedCapacity);
 });
 
 // Update the updatedAt field before saving

@@ -2,8 +2,6 @@ const express = require('express');
 const router = express.Router();
 const Inventory = require('../models/Inventory');
 const StockTransaction = require('../models/StockTransaction');
-const Warehouse = require('../models/Warehouse');
-const mongoose = require('mongoose');
 const { v4: uuidv4 } = require('uuid');
 
 // IMPORTANT: This route must come BEFORE the /:id route to avoid conflicts
@@ -61,264 +59,217 @@ router.get('/test', (req, res) => {
   });
 });
 
-// Get all inventory items with warehouse info
+// Get all inventory items
 router.get('/', async (req, res) => {
   try {
-    const items = await Inventory.find()
-      .populate('location.warehouse', 'name code location')
-      .populate('supplier', 'name');
-    res.json(items);
+    const { category, location, status, search } = req.query;
+    let filter = {};
+    
+    if (category && category !== 'all') {
+      filter.category = category;
+    }
+    if (status && status !== 'all') {
+      filter.status = status;
+    }
+    if (location && location !== 'all') {
+      filter['location.warehouse'] = location;
+    }
+    if (search) {
+      filter.$or = [
+        { itemName: { $regex: search, $options: 'i' } },
+        { itemId: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const inventory = await Inventory.find(filter)
+      .populate('supplier', 'name email')
+      .sort({ itemName: 1 });
+    res.json(inventory);
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching inventory', error: error.message });
+    console.error('Error fetching inventory:', error);
+    res.status(500).json({ message: error.message });
   }
 });
 
-// Get inventory by warehouse
-router.get('/by-warehouse/:warehouseId', async (req, res) => {
+// Get single inventory item
+router.get('/:id', async (req, res) => {
   try {
-    const items = await Inventory.find({ 'location.warehouse': req.params.warehouseId })
-      .populate('location.warehouse', 'name code')
-      .populate('supplier', 'name');
-    res.json(items);
+    const item = await Inventory.findOne({ itemId: req.params.id })
+      .populate('supplier', 'name email phone');
+    if (!item) {
+      return res.status(404).json({ message: 'Item not found' });
+    }
+    res.json(item);
   } catch (error) {
-    res.status(500).json({ message: 'Error fetching warehouse inventory', error: error.message });
+    res.status(500).json({ message: error.message });
   }
 });
 
-// Create inventory item
+// Create new inventory item
 router.post('/', async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-  
   try {
-    // Ensure warehouse is a valid ObjectId
-    if (req.body.location && req.body.location.warehouse === "") {
-      req.body.location.warehouse = null;
+    const inventoryItem = new Inventory({
+      ...req.body,
+      itemId: req.body.itemId || `ITM-${uuidv4().substring(0, 8).toUpperCase()}`
+    });
+    
+    const savedItem = await inventoryItem.save();
+    
+    // Create initial stock transaction if there's stock
+    if (savedItem.currentStock > 0) {
+      const stockTransaction = new StockTransaction({
+        itemId: savedItem.itemId,
+        transactionType: 'initial_stock',
+        quantity: savedItem.currentStock,
+        previousStock: 0,
+        newStock: savedItem.currentStock,
+        performedBy: 'admin',
+        notes: 'Initial stock entry'
+      });
+      
+      await stockTransaction.save();
     }
     
-    // Check warehouse capacity
-    if (req.body.location?.warehouse) {
-      const warehouse = await Warehouse.findById(req.body.location.warehouse).session(session);
-      if (!warehouse) {
-        await session.abortTransaction();
-        return res.status(400).json({ message: 'Selected warehouse not found' });
-      }
-      
-      // Calculate capacity
-      const stockToAdd = req.body.currentStock || 0;
-      const remainingCapacity = warehouse.capacity - warehouse.usedCapacity;
-      
-      if (stockToAdd > remainingCapacity) {
-        // Just warn, don't block - frontend should already have warned
-        console.warn(`Adding inventory exceeds warehouse capacity: ${stockToAdd} > ${remainingCapacity}`);
-      }
-      
-      // Update warehouse used capacity
-      warehouse.usedCapacity += stockToAdd;
-      await warehouse.save({ session });
-    }
+    // Populate supplier info before returning
+    const populatedItem = await Inventory.findById(savedItem._id)
+      .populate('supplier', 'name email');
     
-    const item = new Inventory(req.body);
-    await item.save({ session });
-    
-    // Populate warehouse info before sending response
-    await item.populate('location.warehouse', 'name code remainingCapacity');
-    await item.populate('supplier', 'name');
-    
-    await session.commitTransaction();
-    res.status(201).json(item);
+    res.status(201).json(populatedItem);
   } catch (error) {
-    await session.abortTransaction();
-    res.status(400).json({ message: 'Error creating inventory item', error: error.message });
-  } finally {
-    session.endSession();
+    console.error('Error creating inventory item:', error);
+    res.status(400).json({ message: error.message });
   }
 });
 
 // Update inventory item
 router.put('/:id', async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-  
   try {
-    // Find existing item
-    const oldItem = await Inventory.findById(req.params.id).session(session);
+    const oldItem = await Inventory.findOne({ itemId: req.params.id });
     if (!oldItem) {
-      await session.abortTransaction();
       return res.status(404).json({ message: 'Item not found' });
     }
 
     const oldStock = oldItem.currentStock;
-    const oldWarehouseId = oldItem.location?.warehouse?.toString();
-    const newWarehouseId = req.body.location?.warehouse?.toString();
-    const newStock = req.body.currentStock || 0;
     
-    // If warehouse changed or stock changed, update warehouse capacity
-    if (oldWarehouseId) {
-      // Get old warehouse to decrease its used capacity
-      const oldWarehouse = await Warehouse.findById(oldWarehouseId).session(session);
-      if (oldWarehouse) {
-        oldWarehouse.usedCapacity = Math.max(0, oldWarehouse.usedCapacity - oldStock);
-        await oldWarehouse.save({ session });
-      }
-    }
-    
-    // Add to new warehouse's used capacity
-    if (newWarehouseId) {
-      // Get new warehouse to increase its used capacity
-      const newWarehouse = await Warehouse.findById(newWarehouseId).session(session);
-      if (newWarehouse) {
-        // Check if we have capacity
-        if (newStock > (newWarehouse.capacity - newWarehouse.usedCapacity)) {
-          console.warn(`Updating inventory exceeds warehouse capacity`);
-        }
-        
-        newWarehouse.usedCapacity += newStock;
-        await newWarehouse.save({ session });
-      }
-    }
-    
-    // Update the item
-    const updatedItem = await Inventory.findByIdAndUpdate(
-      req.params.id,
+    const updatedItem = await Inventory.findOneAndUpdate(
+      { itemId: req.params.id },
       req.body,
-      { new: true, runValidators: true, session }
-    ).populate('location.warehouse', 'name code remainingCapacity')
-     .populate('supplier', 'name');
+      { new: true, runValidators: true }
+    );
+
+    // Create stock transaction if stock changed
+    if (oldStock !== updatedItem.currentStock) {
+      const stockTransaction = new StockTransaction({
+        itemId: updatedItem.itemId,
+        transactionType: updatedItem.currentStock > oldStock ? 'adjustment_in' : 'adjustment_out',
+        quantity: Math.abs(updatedItem.currentStock - oldStock),
+        previousStock: oldStock,
+        newStock: updatedItem.currentStock,
+        performedBy: 'admin',
+        notes: 'Stock adjustment via inventory update'
+      });
+      
+      await stockTransaction.save();
+    }
     
-    await session.commitTransaction();
-    res.json(updatedItem);
+    // Populate supplier info
+    const populatedItem = await Inventory.findById(updatedItem._id)
+      .populate('supplier', 'name email');
+    
+    res.json(populatedItem);
   } catch (error) {
-    await session.abortTransaction();
-    res.status(400).json({ message: 'Error updating inventory item', error: error.message });
-  } finally {
-    session.endSession();
+    console.error('Error updating inventory item:', error);
+    res.status(400).json({ message: error.message });
   }
 });
 
 // Delete inventory item
 router.delete('/:id', async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-  
   try {
-    // Find item to get its stock and warehouse
-    const item = await Inventory.findById(req.params.id).session(session);
+    const item = await Inventory.findOne({ itemId: req.params.id });
     if (!item) {
-      await session.abortTransaction();
       return res.status(404).json({ message: 'Item not found' });
     }
+
+    await Inventory.deleteOne({ itemId: req.params.id });
     
-    // Update warehouse capacity
-    if (item.location?.warehouse) {
-      const warehouse = await Warehouse.findById(item.location.warehouse).session(session);
-      if (warehouse) {
-        warehouse.usedCapacity = Math.max(0, warehouse.usedCapacity - item.currentStock);
-        await warehouse.save({ session });
-      }
-    }
-    
-    // Delete the item
-    await Inventory.findByIdAndDelete(req.params.id).session(session);
-    
-    await session.commitTransaction();
+    // Optional: Keep transaction history but mark item as deleted
+    await StockTransaction.create({
+      itemId: req.params.id,
+      transactionType: 'adjustment_out',
+      quantity: item.currentStock,
+      previousStock: item.currentStock,
+      newStock: 0,
+      performedBy: 'admin',
+      notes: 'Item deleted from inventory'
+    });
+
     res.json({ message: 'Item deleted successfully' });
   } catch (error) {
-    await session.abortTransaction();
-    res.status(500).json({ message: 'Error deleting item', error: error.message });
-  } finally {
-    session.endSession();
+    console.error('Error deleting inventory item:', error);
+    res.status(500).json({ message: error.message });
   }
 });
 
-// Update stock levels
-router.post('/:itemId/update-stock', async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-  
+// Update stock levels (for receiving goods, sales, etc.)
+router.post('/:id/update-stock', async (req, res) => {
   try {
-    const { itemId } = req.params;
     const { type, quantity, notes, performedBy } = req.body;
     
-    const item = await Inventory.findOne({ itemId }).session(session);
+    const item = await Inventory.findOne({ itemId: req.params.id });
     if (!item) {
-      await session.abortTransaction();
       return res.status(404).json({ message: 'Item not found' });
     }
-    
-    const previousStock = item.currentStock;
-    
-    // Calculate new stock
-    if (type === 'receive') {
-      // Check warehouse capacity for receiving stock
-      if (item.location?.warehouse) {
-        const warehouse = await Warehouse.findById(item.location.warehouse).session(session);
-        if (warehouse) {
-          const remainingCapacity = warehouse.capacity - warehouse.usedCapacity;
-          if (quantity > remainingCapacity) {
-            console.warn(`Receiving stock exceeds warehouse capacity: ${quantity} > ${remainingCapacity}`);
-          }
-          
-          // Update warehouse capacity
-          warehouse.usedCapacity += quantity;
-          await warehouse.save({ session });
-        }
-      }
-      
-      item.currentStock += quantity;
-    } else if (type === 'issue' || type === 'adjust') {
-      if (item.currentStock < quantity && type === 'issue') {
-        await session.abortTransaction();
-        return res.status(400).json({ message: 'Insufficient stock' });
-      }
-      
-      // Update warehouse capacity
-      if (item.location?.warehouse) {
-        const warehouse = await Warehouse.findById(item.location.warehouse).session(session);
-        if (warehouse) {
-          warehouse.usedCapacity = Math.max(0, warehouse.usedCapacity - quantity);
-          await warehouse.save({ session });
-        }
-      }
-      
-      item.currentStock = type === 'issue' 
-        ? item.currentStock - quantity 
-        : quantity; // For adjust, directly set to the new quantity
+
+    const oldStock = item.currentStock;
+    let newStock;
+
+    // Calculate new stock based on transaction type
+    switch (type) {
+      case 'receive':
+        newStock = oldStock + quantity;
+        break;
+      case 'issue':
+        newStock = Math.max(0, oldStock - quantity);
+        break;
+      case 'adjustment':
+        newStock = quantity; // Direct adjustment to specific quantity
+        break;
+      default:
+        return res.status(400).json({ message: 'Invalid transaction type' });
     }
-    
-    // Update item status
-    item.updateStatus();
-    await item.save({ session });
-    
-    // Create transaction record
+
+    // Update inventory
+    item.currentStock = newStock;
+    await item.save();
+
+    // Create stock transaction
     const transaction = new StockTransaction({
-      transactionId: `TXN-${Date.now().toString().substring(9)}-${Math.floor(Math.random() * 10000)}`,
       itemId: item.itemId,
-      transactionType: type,
-      quantity: type === 'issue' ? -quantity : quantity,
-      previousStock,
-      newStock: item.currentStock,
-      notes,
-      performedBy,
-      approved: true,
-      approvedBy: performedBy,
-      approvedAt: new Date()
+      transactionType: type === 'receive' ? 'inbound' : (type === 'issue' ? 'outbound' : 'adjustment'),
+      quantity: type === 'adjustment' ? Math.abs(newStock - oldStock) : quantity,
+      previousStock: oldStock,
+      newStock: newStock,
+      performedBy: performedBy || 'admin',
+      notes: notes || `Stock ${type} operation`
     });
-    
-    await transaction.save({ session });
-    await session.commitTransaction();
-    
+
+    await transaction.save();
+
+    // Return updated item
+    const updatedItem = await Inventory.findById(item._id)
+      .populate('supplier', 'name email');
+
     res.json({
       message: 'Stock updated successfully',
-      transaction,
-      newStock: item.currentStock,
-      status: item.status
+      item: updatedItem,
+      transaction: transaction
     });
+
   } catch (error) {
-    await session.abortTransaction();
-    res.status(500).json({ message: 'Error updating stock', error: error.message });
-  } finally {
-    session.endSession();
+    console.error('Error updating stock:', error);
+    res.status(500).json({ message: error.message });
   }
 });
 

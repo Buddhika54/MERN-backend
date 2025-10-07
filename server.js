@@ -12,7 +12,6 @@ const notificationRoutes = require('./routes/notifications');
 const reportRoutes = require('./routes/reports');
 const warehouseRoutes = require('./routes/warehouses');
 const purchaseOrderRoutes = require('./routes/purchaseOrders'); // Add this line
-const authRoutes = require('./routes/auth'); // Add this to your server.js imports
 
 // Import services
 const stockMonitorService = require('./services/stockMonitorService');
@@ -39,7 +38,6 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/warehouses', warehouseRoutes);
 app.use('/api/purchase-orders', purchaseOrderRoutes); // Add this line
-app.use('/api/auth', authRoutes); // Add this route
 
 // Test route
 app.get('/api/test', (req, res) => {

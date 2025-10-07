@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const Warehouse = require('../models/Warehouse');
 const Inventory = require('../models/Inventory');
-const warehouseService = require('../services/warehouseService');
 
 // Get all warehouses with inventory counts
 router.get('/', async (req, res) => {
@@ -11,7 +10,7 @@ router.get('/', async (req, res) => {
       {
         $lookup: {
           from: 'inventories',
-          localField: '_id', // Use _id instead of code
+          localField: 'code',
           foreignField: 'location.warehouse',
           as: 'inventory'
         }
@@ -24,7 +23,7 @@ router.get('/', async (req, res) => {
               $map: {
                 input: '$inventory',
                 as: 'item',
-                in: { $multiply: [{ $ifNull: ['$$item.currentStock', 0] }, { $ifNull: ['$$item.unitCost', 0] }] }
+                in: { $multiply: [{ $ifNull: ['$$item.currentStock', 0] }, { $ifNull: ['$$item.unitPrice', 0] }] }
               }
             }
           }
@@ -37,7 +36,21 @@ router.get('/', async (req, res) => {
       }
     ]);
 
-    res.json(warehouses);
+    // Ensure all required fields have defaults
+    const warehousesWithDefaults = warehouses.map(warehouse => ({
+      ...warehouse,
+      status: warehouse.status || 'active',
+      location: warehouse.location || { address: '', city: '', state: '', zipCode: '', country: 'USA' },
+      manager: warehouse.manager || '',
+      phone: warehouse.phone || '',
+      email: warehouse.email || '',
+      description: warehouse.description || '',
+      capacity: warehouse.capacity || 0,
+      inventoryCount: warehouse.inventoryCount || 0,
+      totalValue: warehouse.totalValue || 0
+    }));
+
+    res.json(warehousesWithDefaults);
   } catch (error) {
     console.error('Error fetching warehouses:', error);
     res.status(500).json({ message: 'Error fetching warehouses', error: error.message });
@@ -109,7 +122,7 @@ router.get('/inventory-distribution', async (req, res) => {
       {
         $lookup: {
           from: 'inventories',
-          localField: '_id', // Use _id instead of code
+          localField: 'code',
           foreignField: 'location.warehouse',
           as: 'inventory'
         }
@@ -124,7 +137,7 @@ router.get('/inventory-distribution', async (req, res) => {
               $map: {
                 input: '$inventory',
                 as: 'item',
-                in: { $multiply: [{ $ifNull: ['$$item.currentStock', 0] }, { $ifNull: ['$$item.unitCost', 0] }] }
+                in: { $multiply: [{ $ifNull: ['$$item.currentStock', 0] }, { $ifNull: ['$$item.unitPrice', 0] }] }
               }
             }
           }
@@ -219,8 +232,7 @@ router.delete('/:id', async (req, res) => {
       return res.status(404).json({ message: 'Warehouse not found' });
     }
 
-    // Check for existing inventory using ObjectId
-    const inventoryCount = await Inventory.countDocuments({ 'location.warehouse': warehouse._id });
+    const inventoryCount = await Inventory.countDocuments({ 'location.warehouse': warehouse.code });
     if (inventoryCount > 0) {
       return res.status(400).json({ 
         message: 'Cannot delete warehouse with existing inventory',
@@ -233,33 +245,6 @@ router.delete('/:id', async (req, res) => {
   } catch (error) {
     console.error('Error deleting warehouse:', error);
     res.status(500).json({ message: 'Error deleting warehouse', error: error.message });
-  }
-});
-
-// Transfer inventory between warehouses
-router.post('/transfer', async (req, res) => {
-  try {
-    const { fromWarehouse, toWarehouse, itemId, quantity, performedBy, notes } = req.body;
-    
-    if (!fromWarehouse || !toWarehouse || !itemId || !quantity) {
-      return res.status(400).json({ 
-        message: 'Missing required fields. Please provide fromWarehouse, toWarehouse, itemId and quantity.' 
-      });
-    }
-    
-    const result = await warehouseService.transferInventory(
-      fromWarehouse, 
-      toWarehouse, 
-      itemId, 
-      parseInt(quantity), 
-      performedBy || 'admin', 
-      notes
-    );
-    
-    res.status(200).json(result);
-  } catch (error) {
-    console.error('Error transferring inventory:', error);
-    res.status(400).json({ message: error.message || 'Error transferring inventory' });
   }
 });
 

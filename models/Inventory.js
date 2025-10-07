@@ -43,11 +43,7 @@ const inventorySchema = new mongoose.Schema({
     required: true
   },
   location: {
-    warehouse: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Warehouse',
-      required: true
-    },
+    warehouse: String,
     shelf: String,
     row: String,
     bin: String

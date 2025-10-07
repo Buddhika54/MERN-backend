@@ -1,5 +1,4 @@
 const mongoose = require('mongoose');
-const bcrypt = require('bcrypt');
 
 const supplierSchema = new mongoose.Schema({
   supplierId: {
@@ -38,29 +37,9 @@ const supplierSchema = new mongoose.Schema({
     itemId: String,
     itemName: String,
     unitPrice: Number
-  }],
-  password: {
-    type: String,
-    required: true
-  }
+  }]
 }, {
   timestamps: true
-});
-
-// Add pre-save hook to hash password
-supplierSchema.pre('save', async function(next) {
-  // Only hash the password if it's modified (or new)
-  if (!this.isModified('password')) return next();
-  
-  try {
-    // Generate salt
-    const salt = await bcrypt.genSalt(10);
-    // Hash the password
-    this.password = await bcrypt.hash(this.password, salt);
-    next();
-  } catch (error) {
-    next(error);
-  }
 });
 
 module.exports = mongoose.model('Supplier', supplierSchema);

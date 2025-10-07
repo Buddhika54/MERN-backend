@@ -13,7 +13,6 @@ const sampleWarehouses = [
       country: 'USA'
     },
     capacity: 10000,
-    usedCapacity: 0, // Adding this field for capacity tracking
     manager: 'John Smith',
     phone: '+1-555-0101',
     email: 'john.smith@teafactory.com',
@@ -31,7 +30,6 @@ const sampleWarehouses = [
       country: 'USA'
     },
     capacity: 5000,
-    usedCapacity: 0, // Adding this field for capacity tracking
     manager: 'Sarah Johnson',
     phone: '+1-555-0102',
     email: 'sarah.johnson@teafactory.com',
@@ -49,7 +47,6 @@ const sampleWarehouses = [
       country: 'USA'
     },
     capacity: 8000,
-    usedCapacity: 0, // Adding this field for capacity tracking
     manager: 'Mike Davis',
     phone: '+1-555-0103',
     email: 'mike.davis@teafactory.com',
@@ -67,7 +64,6 @@ const sampleWarehouses = [
       country: 'USA'
     },
     capacity: 3000,
-    usedCapacity: 0, // Adding this field for capacity tracking
     manager: 'Emily Chen',
     phone: '+1-555-0104',
     email: 'emily.chen@teafactory.com',
@@ -85,7 +81,6 @@ const sampleWarehouses = [
       country: 'USA'
     },
     capacity: 4500,
-    usedCapacity: 0, // Adding this field for capacity tracking
     manager: 'Carlos Rodriguez',
     phone: '+1-555-0105',
     email: 'carlos.rodriguez@teafactory.com',
@@ -109,12 +104,6 @@ const seedWarehouses = async () => {
     console.log(`✅ Created ${createdWarehouses.length} sample warehouses`);
     
     console.log('🎉 Warehouse seeding completed successfully!');
-    
-    // Log the IDs for reference (helpful for debugging)
-    console.log('📝 Warehouse IDs for reference:');
-    createdWarehouses.forEach(w => {
-      console.log(`${w.name} (${w.code}): ${w._id}`);
-    });
     
   } catch (error) {
     console.error('❌ Error seeding warehouses:', error);

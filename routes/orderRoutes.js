@@ -3,6 +3,7 @@ const router = express.Router();
 const mongoose = require("mongoose");
 const Order = require("../models/orderModel");
 const Invoice = require("../models/invoiceModel");
+const { checkInventory, requestDelivery } = require("../utils/integrations");
 
 const PDFDocument = require("pdfkit");
 const fs = require("fs");
@@ -96,7 +97,37 @@ router.post("/", async (req, res) => {
     });
 
     await newOrder.save();
-    return res.status(201).json({ success: true, order: newOrder });
+
+    // Integration: Check inventory first
+    let integrationNote = undefined;
+    const inv = await checkInventory({
+      product: newOrder.product,
+      items: newOrder.items,
+      productSpecs: newOrder.productSpecs,
+    });
+    if (inv && inv.available) {
+      // Mark as confirmed and request delivery
+      newOrder.status = "Confirmed";
+      await newOrder.save();
+
+      const del = await requestDelivery(newOrder);
+      if (del && del.requested) {
+        newOrder.deliveryRequestId = del.requestId || newOrder.deliveryRequestId;
+        newOrder.deliveryStatus = del.status || "Requested";
+        await newOrder.save();
+      } else if (del && del.error) {
+        integrationNote = `Delivery request failed: ${del.error}`;
+      }
+    } else {
+      // Keep as Pending; attach a note if error
+      if (inv && inv.error) {
+        integrationNote = `Inventory not available: ${inv.error}`;
+      } else {
+        integrationNote = `Inventory not available`;
+      }
+    }
+
+    return res.status(201).json({ success: true, order: newOrder, note: integrationNote });
   } catch (error) {
     console.error(error.message);
     // Return validation errors as 400 to avoid generic 500s for client-side fixable issues

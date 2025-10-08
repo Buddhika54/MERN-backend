@@ -7,23 +7,26 @@ const mongoose = require("mongoose");
 // Create Auction for an order (admin)
 router.post("/", async (req, res) => {
   try {
-    const { orderId, startDate, endDate, minBid } = req.body;
+    const { auctionId, orderId, startDate, endDate, minBid } = req.body;
 
-    if (!orderId || !startDate || !endDate || !minBid) {
-      return res.status(400).json({ success: false, error: "All fields are required" });
+    if (!auctionId || !startDate || !endDate || minBid === undefined) {
+      return res.status(400).json({ success: false, error: "auctionId, startDate, endDate and minBid are required" });
     }
 
-    if (!mongoose.Types.ObjectId.isValid(orderId)) {
-      return res.status(400).json({ success: false, error: "Invalid Order ID" });
-    }
-
-    const order = await Order.findById(orderId);
-    if (!order) {
-      return res.status(404).json({ success: false, error: "Order not found" });
+    let linkedOrder = null;
+    if (orderId) {
+      if (!mongoose.Types.ObjectId.isValid(orderId)) {
+        return res.status(400).json({ success: false, error: "Invalid Order ID" });
+      }
+      linkedOrder = await Order.findById(orderId);
+      if (!linkedOrder) {
+        return res.status(404).json({ success: false, error: "Order not found" });
+      }
     }
 
     const auction = await Auction.create({
-      orderId,
+      auctionId,
+      orderId: linkedOrder ? linkedOrder._id : undefined,
       startDate,
       endDate,
       minBid,
@@ -105,16 +108,18 @@ router.put("/:id/close", async (req, res) => {
 
     // Connect with order: mark confirmed and store winner info
     // Use findByIdAndUpdate with validation disabled to avoid failing on legacy docs
-    await Order.findByIdAndUpdate(
-      auction.orderId,
-      {
-        $set: {
-          status: "Confirmed",
-          auctionWinner: auction.highestBidder || null,
+    if (auction.orderId) {
+      await Order.findByIdAndUpdate(
+        auction.orderId,
+        {
+          $set: {
+            status: "Confirmed",
+            auctionWinner: auction.highestBidder || null,
+          },
         },
-      },
-      { new: true, runValidators: false }
-    );
+        { new: true, runValidators: false }
+      );
+    }
 
     await auction.save();
     res.status(200).json({ success: true, auction });

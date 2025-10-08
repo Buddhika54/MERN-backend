@@ -7,7 +7,10 @@ const bidSchema = new mongoose.Schema({
 });
 
 const auctionSchema = new mongoose.Schema({
-  orderId: { type: mongoose.Schema.Types.ObjectId, ref: "Order", required: true },
+  // Optional reference to an Order (legacy mode)
+  orderId: { type: mongoose.Schema.Types.ObjectId, ref: "Order" },
+  // Free-form Auction ID provided by admin (new mode)
+  auctionId: { type: String },
   startDate: { type: Date, required: true },
   endDate: { type: Date, required: true },
   minBid: { type: Number, required: true },

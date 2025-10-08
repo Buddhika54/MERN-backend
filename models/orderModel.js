@@ -43,6 +43,8 @@ const orderSchema = new mongoose.Schema({
     enum: ["Pending", "Confirmed", "Dispatched", "Delivered"],
     default: "Pending",
   },
+  deliveryRequestId: { type: String },
+  deliveryStatus: { type: String },
   createdAt: {
     type: Date,
     default: Date.now,

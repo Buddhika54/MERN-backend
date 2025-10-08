@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 
-const dburl = "mongodb+srv://apurva:apurva123@cluster0.8v98dye.mongodb.net/ordersDB?retryWrites=true&w=majority&appName=Cluster0";
+const dburl = "mongodb+srv://buddhikaeranga54:9563@cluster1.cmszlan.mongodb.net/?retryWrites=true&w=majority&appName=Cluster1";
 // 👆 I added `ordersDB` (you can change this name if you want)
 
 mongoose.set("strictQuery", true);

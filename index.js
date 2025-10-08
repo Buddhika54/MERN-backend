@@ -7,6 +7,7 @@ const pickupRoutes = require("./routes/pickupRoutes");
 
 const auctionRoutes = require("./routes/auctionRoutes"); 
 const invoiceRoutes = require("./routes/invoiceRoutes");
+const authRoutes = require("./routes/authRoutes");
 
 
 const app = express();
@@ -30,6 +31,7 @@ app.use("/api/pickups", pickupRoutes);
 
 app.use("/api/auctions", auctionRoutes);
 app.use("/api/invoices", invoiceRoutes);
+app.use("/api/auth", authRoutes);
 
 // Default route
 app.get("/", (req, res) => res.send("Hello Server is Running .."));

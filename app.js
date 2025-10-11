@@ -4,7 +4,8 @@ const router= require("./Routes/machineRoutes");
 const maintenanceRouter = require("./Routes/maintenanceRoutes");
 const technicianRouter =require("./Routes/technicianRoutes")
 const assignRouter = require("./Routes/assignRoutes");
-const dashRouter = require("./Routes/dash"); // 👈 NEW Dashboard route
+const dashRouter = require("./Routes/dash");
+
 
 const app= express();
 const cors = require("cors");
@@ -16,11 +17,12 @@ app.use("/Machine",router);
 app.use("/Maintenance", maintenanceRouter);
 app.use("/Technician", technicianRouter);
 app.use("/Assign",assignRouter);
-app.use("/Dash", dashRouter); // 👈 Add this line for dashboard
-    
+app.use("/Dash", dashRouter);
+
+    //"mongodb+srv://admin:KfPBwAU43DcW9Ool@cluster1.uulgpma.mongodb.net/"
 //mongodb+srv://buddhikaeranga54:9563@cluster1.cmszlan.mongodb.net/?retryWrites=true&w=majority&appName=Cluster1
 
-mongoose.connect("mongodb+srv://admin:KfPBwAU43DcW9Ool@cluster1.uulgpma.mongodb.net/")
+mongoose.connect("mongodb+srv://buddhikaeranga54:9563@cluster1.cmszlan.mongodb.net/?retryWrites=true&w=majority&appName=Cluster1")
 .then(()=> console.log("Connected to MongoDB"))
 .then(()=>{
     app.listen(5000);

@@ -1,9 +1,11 @@
-import express from "express";
-import { getDashboardSummary } from "../controllers/dashController.js";
+const express = require("express");
+const { getDashboardSummary } = require("../Controllers/dashController");
 
 const router = express.Router();
 
-// GET => http://localhost:5000/Dash
-router.get("/", getDashboardSummary);
+// GET /Dash/summary
+router.get("/summary", getDashboardSummary);
 
-export default router;
+module.exports = router;
+
+
